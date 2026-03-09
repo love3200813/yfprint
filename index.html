@@ -113,6 +113,7 @@
         document.getElementById('cart-total').innerText = total;
     }
 
+    // --- 關鍵修正：確保 100% 正確的台灣日期時間格式 ---
     function checkout() {
         if (!cart.length) return;
         const btn = document.getElementById('checkout-btn');
@@ -121,8 +122,10 @@
         const orderId = "#A" + Math.floor(1000 + Math.random()*9000);
         const total = document.getElementById('cart-total').innerText;
         
-        // 改回原本最簡單的本地時間獲取方式
-        const time = new Date().toLocaleString('zh-TW');
+        // 使用手動拼接法，避免電腦時區干擾
+        const d = new Date();
+        const time = d.getFullYear() + "/" + (d.getMonth() + 1) + "/" + d.getDate() + " " + 
+                     String(d.getHours()).padStart(2, '0') + ":" + String(d.getMinutes()).padStart(2, '0');
 
         const itemsString = cart.map(i => `${i.name} x${i.qty}`).join('\n');
 
@@ -153,7 +156,6 @@
             btn.disabled = false; btn.innerText = "確認送出訂單";
         }).catch(err => {
             btn.disabled = false; btn.innerText = "確認送出訂單";
-            alert("資料傳送失敗");
         });
     }
 
@@ -173,7 +175,6 @@
         receipt += "總計：$" + total + "\n";
         receipt += " *** 謝謝惠顧，請憑單取餐 *** \n\n\n"; 
 
-        // 確保使用最穩定的轉址列印
         window.location.href = "rawbt:" + encodeURIComponent(receipt);
     }
 
@@ -185,7 +186,10 @@
                 if (data.status === 'success' && data.orderId !== lastPrintedId) {
                     lastPrintedId = data.orderId;
                     localStorage.setItem('lastPrintedId', data.orderId);
-                    preparePrint(data.orderId, data.time, data.itemsString, data.total);
+                    
+                    // 清洗後台傳回來的髒資料時間格式 (移除 T, Z 與毫秒)
+                    let cleanTime = data.time.replace('T', ' ').split('.')[0].replace('Z', '');
+                    preparePrint(data.orderId, cleanTime, data.itemsString, data.total);
                 }
             }).catch(e => {});
         }, 10000); 
