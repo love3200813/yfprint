@@ -113,7 +113,6 @@
         document.getElementById('cart-total').innerText = total;
     }
 
-    // --- 關鍵修正：確保 100% 正確的台灣日期時間格式 ---
     function checkout() {
         if (!cart.length) return;
         const btn = document.getElementById('checkout-btn');
@@ -122,11 +121,8 @@
         const orderId = "#A" + Math.floor(1000 + Math.random()*9000);
         const total = document.getElementById('cart-total').innerText;
         
-        // 使用手動拼接法，避免電腦時區干擾
-        const d = new Date();
-        const time = d.getFullYear() + "/" + (d.getMonth() + 1) + "/" + d.getDate() + " " + 
-                     String(d.getHours()).padStart(2, '0') + ":" + String(d.getMinutes()).padStart(2, '0');
-
+        // 傳送時使用當前時間，GAS 端會自動記錄為試算表時間
+        const time = new Date().toLocaleString('zh-TW');
         const itemsString = cart.map(i => `${i.name} x${i.qty}`).join('\n');
 
         fetch(GAS_URL, {
@@ -145,12 +141,7 @@
             `;
             showSection('query');
             
-            if (isAdmin) {
-                lastPrintedId = orderId; 
-                localStorage.setItem('lastPrintedId', orderId);
-                preparePrint(orderId, time, itemsString, total);
-            }
-
+            // 如果是櫃檯管理端，會由 startMonitor 自動偵測並列印 GAS 回傳的時間
             cart = []; 
             document.getElementById('cart-count').innerText = 0;
             btn.disabled = false; btn.innerText = "確認送出訂單";
@@ -160,10 +151,13 @@
     }
 
     function preparePrint(id, time, itemsStr, total) {
+        // 【核心修正】清洗 GAS 傳回的時間字元，確保顯示為台灣習慣的格式
+        let displayTime = time.replace('T', ' ').split('.')[0].replace('Z', '');
+        
         let receipt = "       雅芳鹹水雞       \n";
         receipt += "========================\n";
         receipt += "單號：" + id.replace('#','') + "\n";
-        receipt += "時間：" + time + "\n";
+        receipt += "時間：" + displayTime + "\n";
         receipt += "------------------------\n";
         
         let itemsArray = itemsStr.split('\n').filter(Boolean);
@@ -183,13 +177,11 @@
             fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'get_latest' }) })
             .then(res => res.json())
             .then(data => {
+                // 直接抓取 GAS 試算表回傳的 time 欄位
                 if (data.status === 'success' && data.orderId !== lastPrintedId) {
                     lastPrintedId = data.orderId;
                     localStorage.setItem('lastPrintedId', data.orderId);
-                    
-                    // 清洗後台傳回來的髒資料時間格式 (移除 T, Z 與毫秒)
-                    let cleanTime = data.time.replace('T', ' ').split('.')[0].replace('Z', '');
-                    preparePrint(data.orderId, cleanTime, data.itemsString, data.total);
+                    preparePrint(data.orderId, data.time, data.itemsString, data.total);
                 }
             }).catch(e => {});
         }, 10000); 
