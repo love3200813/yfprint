@@ -51,7 +51,7 @@
     </div>
 
     <div id="query" class="section">
-        <h2 id="result-title">單據明細</h2>
+        <h2 id="result-title">線上單據明細</h2>
         <div id="order-info" style="background:#f9f9f9; padding:15px; border-radius:10px; margin-bottom:10px;">
             請輸入單號查詢，或下單後將在此顯示序號。
         </div>
@@ -85,7 +85,7 @@
             container.innerHTML += `<div class="menu-item"><h3>${item.name}</h3><p>$${item.price}</p><button class="btn btn-main" onclick="addToCart(${item.id})">加入</button></div>`;
         });
         if (isAdmin) {
-            document.title = "【櫃檯自動列印中】雅芳點餐";
+            document.title = "【櫃檯自動列印】雅芳點餐後台";
             startMonitor();
         }
     }
@@ -134,11 +134,11 @@
         .then(data => {
             document.getElementById('order-info').innerHTML = `
                 <h3 style="color:var(--primary);">✅ 下單成功</h3>
-                <strong>序號：${orderId}</strong><br>
+                <strong>幫我記住取餐序號：${orderId}</strong><br>
                 時間：${time}<hr>
                 <pre style="font-family:inherit; font-size:14px;">${itemsString}</pre><hr>
                 <strong>總計：$${total}</strong><br>
-                <p>訂單已送出，請至櫃檯結帳取餐。</p>
+                <p>訂單已送出，請至櫃檯結帳取餐。並記住取餐序號</p>
             `;
             showSection('query');
             
@@ -198,7 +198,7 @@
         .then(data => {
             const info = document.getElementById('order-info');
             if (data.status === 'success') {
-                info.innerHTML = `<strong>序號：${id}</strong><hr><pre>${data.itemsString}</pre><hr><strong>總額：$${data.total}</strong>`;
+                info.innerHTML = `<strong>幫我記住取餐序號：${id}</strong><hr><pre>${data.itemsString}</pre><hr><strong>總額：$${data.total}</strong>`;
             }
         });
     }
