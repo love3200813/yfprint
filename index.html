@@ -113,7 +113,6 @@
         document.getElementById('cart-total').innerText = total;
     }
 
-    // --- 修正時間顯示問題 ---
     function checkout() {
         if (!cart.length) return;
         const btn = document.getElementById('checkout-btn');
@@ -122,10 +121,8 @@
         const orderId = "#A" + Math.floor(1000 + Math.random()*9000);
         const total = document.getElementById('cart-total').innerText;
         
-        // 手動格式化時間：年/月/日 時:分
-        const now = new Date();
-        const time = now.getFullYear() + "/" + (now.getMonth()+1) + "/" + now.getDate() + " " + 
-                     String(now.getHours()).padStart(2, '0') + ":" + String(now.getMinutes()).padStart(2, '0');
+        // 改回原本最簡單的本地時間獲取方式
+        const time = new Date().toLocaleString('zh-TW');
 
         const itemsString = cart.map(i => `${i.name} x${i.qty}`).join('\n');
 
@@ -155,9 +152,8 @@
             document.getElementById('cart-count').innerText = 0;
             btn.disabled = false; btn.innerText = "確認送出訂單";
         }).catch(err => {
-            console.log("連線錯誤", err);
             btn.disabled = false; btn.innerText = "確認送出訂單";
-            alert("資料傳送失敗，請確認網路連線。");
+            alert("資料傳送失敗");
         });
     }
 
@@ -177,6 +173,7 @@
         receipt += "總計：$" + total + "\n";
         receipt += " *** 謝謝惠顧，請憑單取餐 *** \n\n\n"; 
 
+        // 確保使用最穩定的轉址列印
         window.location.href = "rawbt:" + encodeURIComponent(receipt);
     }
 
@@ -190,7 +187,7 @@
                     localStorage.setItem('lastPrintedId', data.orderId);
                     preparePrint(data.orderId, data.time, data.itemsString, data.total);
                 }
-            }).catch(e => console.log("系統監測中..."));
+            }).catch(e => {});
         }, 10000); 
     }
 
@@ -202,8 +199,6 @@
             const info = document.getElementById('order-info');
             if (data.status === 'success') {
                 info.innerHTML = `<strong>序號：${id}</strong><hr><pre>${data.itemsString}</pre><hr><strong>總額：$${data.total}</strong>`;
-            } else {
-                info.innerText = "❌ 找不到該單號。";
             }
         });
     }
