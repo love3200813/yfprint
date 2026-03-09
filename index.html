@@ -113,6 +113,7 @@
         document.getElementById('cart-total').innerText = total;
     }
 
+    // --- 修正時間顯示問題 ---
     function checkout() {
         if (!cart.length) return;
         const btn = document.getElementById('checkout-btn');
@@ -120,7 +121,12 @@
         
         const orderId = "#A" + Math.floor(1000 + Math.random()*9000);
         const total = document.getElementById('cart-total').innerText;
-        const time = new Date().toLocaleString('zh-TW');
+        
+        // 手動格式化時間：年/月/日 時:分
+        const now = new Date();
+        const time = now.getFullYear() + "/" + (now.getMonth()+1) + "/" + now.getDate() + " " + 
+                     String(now.getHours()).padStart(2, '0') + ":" + String(now.getMinutes()).padStart(2, '0');
+
         const itemsString = cart.map(i => `${i.name} x${i.qty}`).join('\n');
 
         fetch(GAS_URL, {
@@ -155,7 +161,6 @@
         });
     }
 
-    // --- 最終修正：純文字手動排版（確保不出現標籤字眼） ---
     function preparePrint(id, time, itemsStr, total) {
         let receipt = "       雅芳鹹水雞       \n";
         receipt += "========================\n";
