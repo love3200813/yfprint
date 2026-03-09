@@ -65,7 +65,7 @@
 
 <script>
     // ⚠️ 請務必將這裡換成您「重新部署」後產生的最新 GAS_URL
-    const GAS_URL = 'https://script.google.com/macros/s/AKfycbyEMJfYqQNTBg9RCNKAezRNyvrGnDTG6_R_mMV3UThiottLEVr1llyS7LKsJMsC_4A/exec';
+    const GAS_URL = 'https://script.google.com/macros/s/AKfycbyEMJfYqQNTBg9RCNKAezRNyvrGnDTG6_R_mMV3UThiottLEVr1llyS7LKsJMsC_4A/exec'; 
     
     const menuData = [
         { id: 1, name: "招牌去骨雞腿", price: 60 }, { id: 2, name: "秘製雞胸肉", price: 50 },
@@ -157,27 +157,45 @@
         });
     }
 
-    // --- 手機 RawBT 專用列印邏輯 ---
+    // --- 手機 RawBT 專用列印邏輯 (專業大字體 HTML 排版版) ---
     function preparePrint(id, time, itemsStr, total) {
-        // 1. 排版純文字收據 (針對 58mm 寬度最佳化)
-        let receipt = "       雅芳鹹水雞       \n";
-        receipt += "========================\n";
-        receipt += "單號：" + id.replace('#','') + "\n";
-        receipt += "時間：" + time + "\n";
-        receipt += "------------------------\n";
-        
-        // 2. 塞入品項
+        // 使用 HTML 語法，精確控制字體大小與排版 (可自由調整 px 數字來改變大小)
+        let html = `
+            <div style="color: black; font-family: sans-serif; padding: 5px; width: 100%; box-sizing: border-box;">
+                <div style="text-align: center;">
+                    <div style="font-size: 30px; font-weight: bold;">雅芳鹹水雞</div>
+                    <div style="font-size: 55px; font-weight: bold; margin: 10px 0;">${id.replace('#','')}</div>
+                    <div style="font-size: 22px;">${time}</div>
+                </div>
+                
+                <hr style="border-top: 2px dashed black; margin: 12px 0;">
+                
+                <table style="width: 100%; font-size: 28px; font-weight: bold; border-collapse: collapse;">
+        `;
+
         let itemsArray = itemsStr.split('\n').filter(Boolean);
         itemsArray.forEach(item => {
-            receipt += item + "\n"; 
+            let parts = item.split(' x');
+            html += `
+                <tr>
+                    <td style="text-align: left; padding: 5px 0;">${parts[0]}</td>
+                    <td style="text-align: right; padding: 5px 0;">x${parts[1] || 1}</td>
+                </tr>
+            `;
         });
-        
-        receipt += "------------------------\n";
-        receipt += "總計：$" + total + "\n";
-        receipt += " *** 謝謝惠顧，請憑單取餐 *** \n\n\n"; // 留白方便撕紙
 
-        // 3. 透過網址呼叫 RawBT 的專屬通道
-        window.location.href = "rawbt:" + encodeURIComponent(receipt);
+        html += `
+                </table>
+                
+                <hr style="border-top: 2px dashed black; margin: 12px 0;">
+                
+                <div style="text-align: right; font-size: 30px; font-weight: bold;">總計：$${total}</div>
+                <div style="text-align: center; font-size: 22px; margin-top: 20px;">*** 謝謝惠顧，請憑單取餐 ***</div>
+            </div>
+        `;
+
+        // 透過網址將 HTML 傳送給 RawBT，它會自動畫成一張完美的收據！
+        window.location.href = "rawbt:data:text/html;charset=utf-8," + encodeURIComponent(html);
     }
 
     // --- 櫃檯自動監控模式 ---
@@ -214,5 +232,3 @@
 </script>
 </body>
 </html>
-
-
