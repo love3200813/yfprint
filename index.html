@@ -16,11 +16,19 @@
         .section { display: none; background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
         .active { display: block; }
         .cart-item { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #eee; }
+        
+        @media print {
+            @page { size: 58mm auto; margin: 0; }
+            body * { visibility: hidden; }
+            #print-area, #print-area * { visibility: visible; }
+            #print-area { position: absolute; left: 0; top: 0; width: 48mm; color: black; background: white; padding: 2mm; line-height: 1.2; }
+            .no-print { display: none !important; }
+        }
     </style>
 </head>
 <body>
 
-<div class="header">
+<div class="header no-print">
     <h1 style="margin:0; font-size:1.2rem;">雅芳點餐系統</h1>
     <div style="display:flex; gap:10px;">
         <button class="btn" style="background:rgba(255,255,255,0.2); color:white;" onclick="showSection('query')">查單</button>
@@ -28,11 +36,12 @@
     </div>
 </div>
 
-<div class="container">
+<div class="container no-print">
     <div id="menu" class="section active">
         <h2>精選菜單</h2>
         <div class="menu-grid" id="menu-container"></div>
     </div>
+
     <div id="cart" class="section">
         <h2>購物車清單</h2>
         <div id="cart-items"></div>
@@ -40,9 +49,12 @@
         <button class="btn btn-main" onclick="checkout()" id="checkout-btn">確認送出訂單</button>
         <button class="btn" style="width:100%; margin-top:10px;" onclick="showSection('menu')">回菜單加購</button>
     </div>
+
     <div id="query" class="section">
         <h2 id="result-title">單據明細</h2>
-        <div id="order-info" style="background:#f9f9f9; padding:15px; border-radius:10px; margin-bottom:10px;">請輸入單號查詢。</div>
+        <div id="order-info" style="background:#f9f9f9; padding:15px; border-radius:10px; margin-bottom:10px;">
+            請輸入單號查詢，或下單後將在此顯示序號。
+        </div>
         <input type="text" id="order-number-input" placeholder="單號 (例: #A1234)">
         <button class="btn btn-main" onclick="searchOrder()">查詢單據</button>
         <button class="btn" style="width:100%; margin-top:10px;" onclick="showSection('menu')">返回首頁</button>
@@ -97,29 +109,30 @@
     }
 
     function checkout() {
-        if (cart.length === 0) return alert("購物車是空的！");
+        if (!cart.length) return;
         const btn = document.getElementById('checkout-btn');
         btn.disabled = true;
 
         const orderId = "#A" + Math.floor(1000 + Math.random()*9000);
         const total = document.getElementById('cart-total').innerText;
         
-        // --- 修正日期顯示 ---
+        // --- 修正時間顯示 (手動拼接防出錯) ---
         const d = new Date();
-        const time = d.getFullYear() + "/" + (d.getMonth()+1) + "/" + d.getDate() + " " + 
+        const time = d.getFullYear() + "/" + (d.getMonth() + 1) + "/" + d.getDate() + " " + 
                      String(d.getHours()).padStart(2, '0') + ":" + String(d.getMinutes()).padStart(2, '0');
-        
+
         const itemsString = cart.map(i => `${i.name} x${i.qty}`).join('\n');
 
         fetch(GAS_URL, {
             method: 'POST',
-            mode: 'no-cors', 
+            mode: 'no-cors',
             body: JSON.stringify({ action: 'create', orderId, time, itemsString, total })
         })
         .then(() => {
             document.getElementById('order-info').innerHTML = `
                 <h3 style="color:var(--primary);">✅ 下單成功</h3>
-                <strong>序號：${orderId}</strong><hr>
+                <strong>序號：${orderId}</strong><br>
+                時間：${time}<hr>
                 <p>訂單已送出，請至櫃檯結帳取餐。</p>
             `;
             showSection('query');
@@ -134,12 +147,14 @@
         });
     }
 
-    // --- 回歸最穩定的 RawBT 模式 ---
     function preparePrint(id, time, itemsStr, total) {
+        // 清洗時間，確保列印機不報錯
+        let displayTime = time.toString().replace('T', ' ').replace('Z', '').split('.')[0];
+        
         let receipt = "       雅芳鹹水雞       \n";
         receipt += "========================\n";
         receipt += "單號：" + id.replace('#','') + "\n";
-        receipt += "時間：" + time + "\n";
+        receipt += "時間：" + displayTime + "\n";
         receipt += "------------------------\n";
         receipt += itemsStr + "\n";
         receipt += "------------------------\n";
@@ -157,6 +172,7 @@
                 if (data.status === 'success' && data.orderId !== lastPrintedId) {
                     lastPrintedId = data.orderId;
                     localStorage.setItem('lastPrintedId', data.orderId);
+                    // 監控端也要清洗時間
                     let cleanTime = data.time.replace('T', ' ').split('.')[0].replace('Z', '');
                     preparePrint(data.orderId, cleanTime, data.itemsString, data.total);
                 }
