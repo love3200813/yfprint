@@ -6,7 +6,7 @@
     <title>雅芳點餐系統</title>
     <style>
         :root { --primary: #2ecc71; --accent: #e74c3c; --bg: #f8f9fa; }
-        body { font-family: 'PingFang TC', sans-serif; margin: 0; background: var(--bg); }
+        body { font-family: 'PingFang TC', 'Microsoft JhengHei', sans-serif; margin: 0; background: var(--bg); }
         .header { background: var(--primary); color: white; padding: 15px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; }
         .container { max-width: 800px; margin: 20px auto; padding: 0 15px; }
         .btn { padding: 10px 20px; border: none; border-radius: 25px; cursor: pointer; font-weight: bold; }
@@ -18,10 +18,6 @@
         .cart-item { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #eee; }
         
         @media print {
-            @page { size: 58mm auto; margin: 0; }
-            body * { visibility: hidden; }
-            #print-area, #print-area * { visibility: visible; }
-            #print-area { position: absolute; left: 0; top: 0; width: 48mm; color: black; background: white; padding: 2mm; line-height: 1.2; }
             .no-print { display: none !important; }
         }
     </style>
@@ -60,8 +56,6 @@
         <button class="btn" style="width:100%; margin-top:10px;" onclick="showSection('menu')">返回首頁</button>
     </div>
 </div>
-
-<div id="print-area"></div>
 
 <script>
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbyEMJfYqQNTBg9RCNKAezRNyvrGnDTG6_R_mMV3UThiottLEVr1llyS7LKsJMsC_4A/exec'; 
@@ -121,8 +115,8 @@
         const orderId = "#A" + Math.floor(1000 + Math.random()*9000);
         const total = document.getElementById('cart-total').innerText;
         
-        // 改回原本最簡單的本地時間獲取方式
-        const time = new Date().toLocaleString('zh-TW');
+        // 配合附圖，改用 ISO 8601 時間格式
+        const time = new Date().toISOString();
 
         const itemsString = cart.map(i => `${i.name} x${i.qty}`).join('\n');
 
@@ -157,24 +151,70 @@
         });
     }
 
+    // --- 核心修改：Canvas 圖形化列印模式 ---
     function preparePrint(id, time, itemsStr, total) {
-        let receipt = "       雅芳鹹水雞       \n";
-        receipt += "========================\n";
-        receipt += "單號：" + id.replace('#','') + "\n";
-        receipt += "時間：" + time + "\n";
-        receipt += "------------------------\n";
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const width = 384; // 58mm 寬度的建議點陣像素
+        const itemsArray = itemsStr.split('\n').filter(Boolean);
         
-        let itemsArray = itemsStr.split('\n').filter(Boolean);
-        itemsArray.forEach(item => {
-            receipt += item + "\n"; 
-        });
-        
-        receipt += "------------------------\n";
-        receipt += "總計：$" + total + "\n";
-        receipt += " *** 謝謝惠顧，請憑單取餐 *** \n\n\n"; 
+        // 動態計算畫布高度
+        const height = 450 + (itemsArray.length * 35);
+        canvas.width = width;
+        canvas.height = height;
 
-        // 確保使用最穩定的轉址列印
-        window.location.href = "rawbt:" + encodeURIComponent(receipt);
+        // 背景刷白
+        ctx.fillStyle = "white";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "black";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+
+        // 1. 店名
+        ctx.font = "bold 34px 'PingFang TC'";
+        ctx.fillText("雅芳鹹水雞", width / 2, 20);
+
+        // 2. 取餐序號標題
+        ctx.font = "22px 'PingFang TC'";
+        ctx.fillText("取餐序號", width / 2, 70);
+
+        // 3. 大序號 (附圖關鍵樣式)
+        ctx.font = "bold 90px Arial";
+        ctx.fillText(id.replace('#', ''), width / 2, 110);
+
+        // 4. 分隔線
+        ctx.beginPath();
+        ctx.lineWidth = 2;
+        ctx.moveTo(20, 215);
+        ctx.lineTo(width - 20, 215);
+        ctx.stroke();
+
+        // 5. ISO 時間
+        ctx.font = "16px monospace";
+        ctx.fillText(time, width / 2, 230);
+
+        // 6. 菜單明細
+        ctx.textAlign = "left";
+        ctx.font = "bold 26px 'PingFang TC'";
+        let y = 280;
+        itemsArray.forEach(item => {
+            ctx.fillText(item, 30, y);
+            y += 40;
+        });
+
+        // 7. 總計 (靠右)
+        ctx.textAlign = "right";
+        ctx.font = "bold 30px 'PingFang TC'";
+        ctx.fillText("總計：$" + total, width - 30, y + 20);
+
+        // 8. 腳註
+        ctx.textAlign = "center";
+        ctx.font = "20px 'PingFang TC'";
+        ctx.fillText("謝謝惠顧，請憑單取餐", width / 2, y + 80);
+
+        // 9. 轉換成圖片發送給 RawBT App
+        const dataURL = canvas.toDataURL('image/png');
+        window.location.href = "rawbt:base64," + dataURL.split(',')[1];
     }
 
     function startMonitor() {
