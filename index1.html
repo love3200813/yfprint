@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>雅芳點餐系統</title>
+    <style>
+        :root { --primary: #2ecc71; --accent: #e74c3c; --bg: #f8f9fa; }
+        body { font-family: 'PingFang TC', sans-serif; margin: 0; background: var(--bg); }
+        .header { background: var(--primary); color: white; padding: 15px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; }
+        .container { max-width: 800px; margin: 20px auto; padding: 0 15px; }
+        .btn { padding: 10px 20px; border: none; border-radius: 25px; cursor: pointer; font-weight: bold; }
+        .btn-main { background: var(--primary); color: white; width: 100%; margin-top: 10px; }
+        .menu-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px; }
+        .menu-item { background: white; padding: 15px; border-radius: 12px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .section { display: none; background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        .active { display: block; }
+        .cart-item { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #eee; }
+        
+        @media print {
+            @page { size: 58mm auto; margin: 0; }
+            body * { visibility: hidden; }
+            #print-area, #print-area * { visibility: visible; }
+            #print-area { position: absolute; left: 0; top: 0; width: 48mm; color: black; background: white; padding: 2mm; line-height: 1.2; }
+            .no-print { display: none !important; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header no-print">
+    <h1 style="margin:0; font-size:1.2rem;">雅芳點餐系統</h1>
+    <div style="display:flex; gap:10px;">
+        <button class="btn" style="background:rgba(255,255,255,0.2); color:white;" onclick="showSection('query')">查單</button>
+        <button class="btn" style="background:white; color:var(--primary);" onclick="showSection('cart')">🛒 <span id="cart-count">0</span></button>
+    </div>
+</div>
+
+<div class="container no-print">
+    <div id="menu" class="section active">
+        <h2>精選菜單</h2>
+        <div class="menu-grid" id="menu-container"></div>
+    </div>
+
+    <div id="cart" class="section">
+        <h2>購物車清單</h2>
+        <div id="cart-items"></div>
+        <h3 style="text-align:right;">總計: $<span id="cart-total">0</span></h3>
+        <button class="btn btn-main" onclick="checkout()" id="checkout-btn">確認送出訂單</button>
+        <button class="btn" style="width:100%; margin-top:10px;" onclick="showSection('menu')">回菜單加購</button>
+    </div>
+
+    <div id="query" class="section">
+        <h2 id="result-title">單據明細</h2>
+        <div id="order-info" style="background:#f9f9f9; padding:15px; border-radius:10px; margin-bottom:10px;">
+            請輸入單號查詢，或下單後將在此顯示序號。
+        </div>
+        <input type="text" id="order-number-input" placeholder="單號 (例: #A1234)">
+        <button class="btn btn-main" onclick="searchOrder()">查詢單據</button>
+        <button class="btn" style="width:100%; margin-top:10px;" onclick="showSection('menu')">返回首頁</button>
+    </div>
+</div>
+
+<div id="print-area"></div>
+
+<script>
+    // ⚠️ 請務必將這裡換成您「重新部署」後產生的最新 GAS_URL
+    const GAS_URL = 'https://script.google.com/macros/s/AKfycbyEMJfYqQNTBg9RCNKAezRNyvrGnDTG6_R_mMV3UThiottLEVr1llyS7LKsJMsC_4A/exec';
+    
+    const menuData = [
+        { id: 1, name: "招牌去骨雞腿", price: 60 }, { id: 2, name: "秘製雞胸肉", price: 50 },
+        { id: 3, name: "酥脆甜不辣", price: 20 }, { id: 4, name: "Q彈豬血糕", price: 20 },
+        { id: 5, name: "滷香海帶", price: 20 }, { id: 6, name: "手工豆干", price: 20 },
+        { id: 7, name: "鮮甜高麗菜", price: 30 }, { id: 8, name: "爽脆青花菜", price: 30 },
+        { id: 9, name: "養生金針菇", price: 30 }, { id: 10, name: "爆汁貢丸", price: 25 },
+        { id: 11, name: "軟嫩百頁豆腐", price: 25 }, { id: 12, name: "脆口雞心", price: 30 }
+    ];
+
+    let cart = [];
+    const isAdmin = new URLSearchParams(window.location.search).get('admin') === 'true';
+    let lastPrintedId = localStorage.getItem('lastPrintedId') || "";
+
+    function init() {
+        const container = document.getElementById('menu-container');
+        menuData.forEach(item => {
+            container.innerHTML += `<div class="menu-item"><h3>${item.name}</h3><p>$${item.price}</p><button class="btn btn-main" onclick="addToCart(${item.id})">加入</button></div>`;
+        });
+        if (isAdmin) {
+            document.title = "【櫃檯自動列印中】雅芳點餐";
+            startMonitor();
+        }
+    }
+
+    function showSection(id) {
+        document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+        if(id === 'cart') renderCart();
+    }
+
+    function addToCart(id) {
+        const item = menuData.find(i => i.id === id);
+        const exit = cart.find(i => i.id === id);
+        if (exit) exit.qty++; else cart.push({...item, qty:1});
+        document.getElementById('cart-count').innerText = cart.reduce((s,i)=>s+i.qty, 0);
+    }
+
+    function renderCart() {
+        const cont = document.getElementById('cart-items');
+        let total = 0;
+        cont.innerHTML = cart.map(i => {
+            total += i.price * i.qty;
+            return `<div class="cart-item"><span>${i.name} x${i.qty}</span><span>$${i.price*i.qty}</span></div>`;
+        }).join('');
+        document.getElementById('cart-total').innerText = total;
+    }
+
+    function checkout() {
+        if (!cart.length) return;
+        const btn = document.getElementById('checkout-btn');
+        btn.disabled = true; btn.innerText = "傳送中...";
+        
+        const orderId = "#A" + Math.floor(1000 + Math.random()*9000);
+        const total = document.getElementById('cart-total').innerText;
+        const time = new Date().toLocaleString('zh-TW');
+        const itemsString = cart.map(i => `${i.name} x${i.qty}`).join('\n');
+
+        fetch(GAS_URL, {
+            method: 'POST',
+            body: JSON.stringify({ action: 'create', orderId, time, itemsString, total })
+        })
+        .then(res => res.json())
+        .then(data => {
+            document.getElementById('order-info').innerHTML = `
+                <h3 style="color:var(--primary);">✅ 下單成功</h3>
+                <strong>序號：${orderId}</strong><br>
+                時間：${time}<hr>
+                <pre style="font-family:inherit; font-size:14px;">${itemsString}</pre><hr>
+                <strong>總計：$${total}</strong><br>
+                <p>訂單已送出，請至櫃檯結帳取餐。</p>
+            `;
+            showSection('query');
+            
+            // 後台下單防呆：記錄並列印，避免監控重複印
+            if (isAdmin) {
+                lastPrintedId = orderId; 
+                localStorage.setItem('lastPrintedId', orderId);
+                preparePrint(orderId, time, itemsString, total);
+            }
+
+            cart = []; 
+            document.getElementById('cart-count').innerText = 0;
+            btn.disabled = false; btn.innerText = "確認送出訂單";
+        }).catch(err => {
+            console.log("連線錯誤", err);
+            btn.disabled = false; btn.innerText = "確認送出訂單";
+            alert("資料傳送失敗，請確認網路連線。");
+        });
+    }
+
+    // --- 櫃檯列印排版 (純表格 XP-237B 版) ---
+    function preparePrint(id, time, itemsStr, total) {
+        const area = document.getElementById('print-area');
+        
+        let itemsArray = itemsStr.split('\n').filter(Boolean);
+        let itemsHtml = '';
+        itemsArray.forEach(item => {
+            let parts = item.split(' x');
+            itemsHtml += `
+                <tr>
+                    <td style="text-align: left; padding: 3px 0; font-size: 14px;">${parts[0]}</td>
+                    <td style="text-align: right; padding: 3px 0; font-size: 14px; white-space: nowrap;">x${parts[1] || 1}</td>
+                </tr>
+            `;
+        });
+
+        area.innerHTML = `
+            <div style="color: black; font-family: 'Microsoft JhengHei', sans-serif; width: 100%;">
+                <div style="text-align: center;">
+                    <h2 style="margin: 0; font-size: 18px; font-weight: bold;">雅芳鹹水雞</h2>
+                    <h1 style="margin: 5px 0; font-size: 32px; font-weight: bold;">${id.replace('#','')}</h1>
+                    <div style="font-size: 12px; margin-bottom: 5px;">${time}</div>
+                    <div style="border-top: 1px dashed black; margin: 8px 0;"></div>
+                </div>
+                <table style="width: 100%; border-collapse: collapse;">
+                    ${itemsHtml}
+                </table>
+                <div style="border-top: 1px dashed black; margin: 8px 0;"></div>
+                <div style="text-align: right; font-size: 16px; font-weight: bold;">總計：$${total}</div>
+                <div style="text-align: center; margin-top: 15px; font-size: 12px;">*** 謝謝惠顧，請憑單取餐 ***</div>
+                <br><br><br> 
+            </div>
+        `;
+        
+        setTimeout(() => { window.print(); }, 800);
+    }
+
+    // --- 櫃檯自動監控模式 ---
+    function startMonitor() {
+        setInterval(() => {
+            fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'get_latest' }) })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success' && data.orderId !== lastPrintedId) {
+                    lastPrintedId = data.orderId;
+                    localStorage.setItem('lastPrintedId', data.orderId);
+                    preparePrint(data.orderId, data.time, data.itemsString, data.total);
+                }
+            }).catch(e => console.log("系統監測中..."));
+        }, 10000); 
+    }
+
+    // --- 查詢單號 ---
+    function searchOrder() {
+        const id = document.getElementById('order-number-input').value;
+        fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'query', orderId: id }) })
+        .then(res => res.json())
+        .then(data => {
+            const info = document.getElementById('order-info');
+            if (data.status === 'success') {
+                info.innerHTML = `<strong>序號：${id}</strong><hr><pre>${data.itemsString}</pre><hr><strong>總額：$${data.total}</strong>`;
+            } else {
+                info.innerText = "❌ 找不到該單號。";
+            }
+        });
+    }
+
+    init();
+</script>
+</body>
+</html>
