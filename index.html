@@ -64,7 +64,6 @@
 <div id="print-area"></div>
 
 <script>
-    // ⚠️ 已保留您最新的 GAS_URL
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbyEMJfYqQNTBg9RCNKAezRNyvrGnDTG6_R_mMV3UThiottLEVr1llyS7LKsJMsC_4A/exec'; 
     
     const menuData = [
@@ -140,7 +139,6 @@
             `;
             showSection('query');
             
-            // 後台下單防呆：記錄並列印，避免監控重複印
             if (isAdmin) {
                 lastPrintedId = orderId; 
                 localStorage.setItem('lastPrintedId', orderId);
@@ -157,27 +155,26 @@
         });
     }
 
-    // --- 手機 RawBT 專屬標籤放大版 (最穩定，保證不亂碼) ---
+    // --- 最終修正：純文字手動排版（確保不出現標籤字眼） ---
     function preparePrint(id, time, itemsStr, total) {
-        let receipt = "<center><dwdh>雅芳鹹水雞</dwdh></center>\n";
+        let receipt = "       雅芳鹹水雞       \n";
         receipt += "========================\n";
-        receipt += "<center><dwdh>" + id.replace('#','') + "</dwdh></center>\n";
-        receipt += "<center>" + time + "</center>\n";
+        receipt += "單號：" + id.replace('#','') + "\n";
+        receipt += "時間：" + time + "\n";
         receipt += "------------------------\n";
         
         let itemsArray = itemsStr.split('\n').filter(Boolean);
         itemsArray.forEach(item => {
-            receipt += "<dh>" + item + "</dh>\n"; 
+            receipt += item + "\n"; 
         });
         
         receipt += "------------------------\n";
-        receipt += "<right><dwdh>總計：$" + total + "</dwdh></right>\n";
-        receipt += "<center>*** 謝謝惠顧，請憑單取餐 ***</center>\n\n\n"; 
+        receipt += "總計：$" + total + "\n";
+        receipt += " *** 謝謝惠顧，請憑單取餐 *** \n\n\n"; 
 
         window.location.href = "rawbt:" + encodeURIComponent(receipt);
     }
 
-    // --- 櫃檯自動監控模式 ---
     function startMonitor() {
         setInterval(() => {
             fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'get_latest' }) })
@@ -192,7 +189,6 @@
         }, 10000); 
     }
 
-    // --- 查詢單號 ---
     function searchOrder() {
         const id = document.getElementById('order-number-input').value;
         fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'query', orderId: id }) })
