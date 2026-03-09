@@ -17,8 +17,13 @@
         .active { display: block; }
         .cart-item { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #eee; }
         
-        /* --- 隱藏的列印範本區域 --- */
-        #print-template-area { display: none; }
+        @media print {
+            @page { size: 58mm auto; margin: 0; }
+            body * { visibility: hidden; }
+            #print-area, #print-area * { visibility: visible; }
+            #print-area { position: absolute; left: 0; top: 0; width: 48mm; color: black; background: white; padding: 2mm; line-height: 1.2; }
+            .no-print { display: none !important; }
+        }
     </style>
 </head>
 <body>
@@ -36,6 +41,7 @@
         <h2>精選菜單</h2>
         <div class="menu-grid" id="menu-container"></div>
     </div>
+
     <div id="cart" class="section">
         <h2>購物車清單</h2>
         <div id="cart-items"></div>
@@ -43,19 +49,23 @@
         <button class="btn btn-main" onclick="checkout()" id="checkout-btn">確認送出訂單</button>
         <button class="btn" style="width:100%; margin-top:10px;" onclick="showSection('menu')">回菜單加購</button>
     </div>
+
     <div id="query" class="section">
         <h2 id="result-title">單據明細</h2>
-        <div id="order-info" style="background:#f9f9f9; padding:15px; border-radius:10px; margin-bottom:10px;">請輸入單號查詢。</div>
+        <div id="order-info" style="background:#f9f9f9; padding:15px; border-radius:10px; margin-bottom:10px;">
+            請輸入單號查詢，或下單後將在此顯示序號。
+        </div>
         <input type="text" id="order-number-input" placeholder="單號 (例: #A1234)">
         <button class="btn btn-main" onclick="searchOrder()">查詢單據</button>
         <button class="btn" style="width:100%; margin-top:10px;" onclick="showSection('menu')">返回首頁</button>
     </div>
 </div>
 
-<div id="print-template-area"></div>
+<div id="print-area"></div>
 
 <script>
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbyEMJfYqQNTBg9RCNKAezRNyvrGnDTG6_R_mMV3UThiottLEVr1llyS7LKsJMsC_4A/exec'; 
+    
     const menuData = [
         { id: 1, name: "招牌去骨雞腿", price: 60 }, { id: 2, name: "秘製雞胸肉", price: 50 },
         { id: 3, name: "酥脆甜不辣", price: 20 }, { id: 4, name: "Q彈豬血糕", price: 20 },
@@ -74,7 +84,16 @@
         menuData.forEach(item => {
             container.innerHTML += `<div class="menu-item"><h3>${item.name}</h3><p>$${item.price}</p><button class="btn btn-main" onclick="addToCart(${item.id})">加入</button></div>`;
         });
-        if (isAdmin) startMonitor();
+        if (isAdmin) {
+            document.title = "【櫃檯自動列印中】雅芳點餐";
+            startMonitor();
+        }
+    }
+
+    function showSection(id) {
+        document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+        if(id === 'cart') renderCart();
     }
 
     function addToCart(id) {
@@ -95,72 +114,67 @@
     }
 
     function checkout() {
-        if (cart.length === 0) return;
+        if (!cart.length) return;
         const btn = document.getElementById('checkout-btn');
-        btn.disabled = true;
+        btn.disabled = true; btn.innerText = "傳送中...";
+        
         const orderId = "#A" + Math.floor(1000 + Math.random()*9000);
         const total = document.getElementById('cart-total').innerText;
         
-        // 手動時間格式修正
-        const d = new Date();
-        const time = d.getFullYear() + "/" + (d.getMonth()+1) + "/" + d.getDate() + " " + String(d.getHours()).padStart(2,'0') + ":" + String(d.getMinutes()).padStart(2,'0');
+        // 改回原本最簡單的本地時間獲取方式
+        const time = new Date().toLocaleString('zh-TW');
+
         const itemsString = cart.map(i => `${i.name} x${i.qty}`).join('\n');
 
-        fetch(GAS_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: 'create', orderId, time, itemsString, total }) })
-        .then(() => {
+        fetch(GAS_URL, {
+            method: 'POST',
+            body: JSON.stringify({ action: 'create', orderId, time, itemsString, total })
+        })
+        .then(res => res.json())
+        .then(data => {
+            document.getElementById('order-info').innerHTML = `
+                <h3 style="color:var(--primary);">✅ 下單成功</h3>
+                <strong>序號：${orderId}</strong><br>
+                時間：${time}<hr>
+                <pre style="font-family:inherit; font-size:14px;">${itemsString}</pre><hr>
+                <strong>總計：$${total}</strong><br>
+                <p>訂單已送出，請至櫃檯結帳取餐。</p>
+            `;
+            showSection('query');
+            
             if (isAdmin) {
-                lastPrintedId = orderId;
+                lastPrintedId = orderId; 
                 localStorage.setItem('lastPrintedId', orderId);
                 preparePrint(orderId, time, itemsString, total);
             }
-            cart = [];
+
+            cart = []; 
             document.getElementById('cart-count').innerText = 0;
-            btn.disabled = false;
-            showSection('query');
+            btn.disabled = false; btn.innerText = "確認送出訂單";
+        }).catch(err => {
+            btn.disabled = false; btn.innerText = "確認送出訂單";
+            alert("資料傳送失敗");
         });
     }
 
-    // --- 【高清排版修復版】 ---
     function preparePrint(id, time, itemsStr, total) {
-        // 全面清洗時間資料，強迫移除所有奇怪字元
-        let displayTime = time.toString().replace('T', ' ').replace('Z', '').split('.')[0];
+        let receipt = "       雅芳鹹水雞       \n";
+        receipt += "========================\n";
+        receipt += "單號：" + id.replace('#','') + "\n";
+        receipt += "時間：" + time + "\n";
+        receipt += "------------------------\n";
         
-        // 1. 構建跟您照片螢幕上一模一樣的大字排版 (使用 58mm 最佳化樣式)
-        let html = `
-            <div style="width: 58mm; color: black; font-family: sans-serif; padding: 5px; box-sizing: border-box; text-align: center;">
-                <h3 style="margin: 0; font-size: 24px; font-weight: bold;">雅芳鹹水雞</h3>
-                <p style="margin: 5px 0; font-size: 16px;">取餐序號</p>
-                <h1 style="margin: 10px 0; font-size: 50px; font-weight: bold; border-top: 2px dashed black; border-bottom: 2px dashed black; padding: 5px 0;">${id.replace('#','')}</h1>
-                <p style="margin: 5px 0; font-size: 16px;">${displayTime}</p>
-                
-                <hr style="border: 0; border-top: 1px solid black; margin: 15px 0;">
-                
-                <table style="width: 100%; font-size: 22px; font-weight: bold; border-collapse: collapse;">
-        `;
-
         let itemsArray = itemsStr.split('\n').filter(Boolean);
         itemsArray.forEach(item => {
-            let parts = item.split(' x');
-            html += `
-                <tr>
-                    <td style="text-align: left; padding: 5px 0;">${parts[0]}</td>
-                    <td style="text-align: right; padding: 5px 0;">x${parts[1] || 1}</td>
-                </tr>
-            `;
+            receipt += item + "\n"; 
         });
+        
+        receipt += "------------------------\n";
+        receipt += "總計：$" + total + "\n";
+        receipt += " *** 謝謝惠顧，請憑單取餐 *** \n\n\n"; 
 
-        html += `
-                </table>
-                
-                <hr style="border: 0; border-top: 1px solid black; margin: 15px 0;">
-                
-                <div style="text-align: right; font-size: 24px; font-weight: bold;">總計：$${total}</div>
-                <div style="text-align: center; font-size: 16px; margin-top: 30px;">謝謝惠顧，請憑單取餐</div>
-            </div>
-        `;
-
-        // 2. 將上面的 HTML 和排版「鎖死」成高清圖形通道發送給 RawBT，絕對不會亂碼
-        window.location.href = "rawbt:data:text/html;base64, " + btoa(unescape(encodeURIComponent(html)));
+        // 確保使用最穩定的轉址列印
+        window.location.href = "rawbt:" + encodeURIComponent(receipt);
     }
 
     function startMonitor() {
@@ -171,23 +185,14 @@
                 if (data.status === 'success' && data.orderId !== lastPrintedId) {
                     lastPrintedId = data.orderId;
                     localStorage.setItem('lastPrintedId', data.orderId);
-                    // 監控端也要清洗時間
-                    let cleanTime = data.time.replace('T', ' ').split('.')[0].replace('Z', '');
-                    preparePrint(data.orderId, cleanTime, data.itemsString, data.total);
+                    preparePrint(data.orderId, data.time, data.itemsString, data.total);
                 }
             }).catch(e => {});
         }, 10000); 
     }
 
-    init();
-    function showSection(id) {
-        document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-        document.getElementById(id).classList.add('active');
-        if(id === 'cart') renderCart();
-    }
     function searchOrder() {
         const id = document.getElementById('order-number-input').value;
-        if(!id) return;
         fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'query', orderId: id }) })
         .then(res => res.json())
         .then(data => {
@@ -197,6 +202,8 @@
             }
         });
     }
+
+    init();
 </script>
 </body>
 </html>
