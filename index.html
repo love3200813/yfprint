@@ -20,7 +20,7 @@
 </head>
 <body>
 
-<div class="header no-print">
+<div class="header">
     <h1 style="margin:0; font-size:1.2rem;">雅芳點餐系統</h1>
     <div style="display:flex; gap:10px;">
         <button class="btn" style="background:rgba(255,255,255,0.2); color:white;" onclick="showSection('query')">查單</button>
@@ -28,11 +28,12 @@
     </div>
 </div>
 
-<div class="container no-print">
+<div class="container">
     <div id="menu" class="section active">
         <h2>精選菜單</h2>
         <div class="menu-grid" id="menu-container"></div>
     </div>
+
     <div id="cart" class="section">
         <h2>購物車清單</h2>
         <div id="cart-items"></div>
@@ -40,6 +41,7 @@
         <button class="btn btn-main" onclick="checkout()" id="checkout-btn">確認送出訂單</button>
         <button class="btn" style="width:100%; margin-top:10px;" onclick="showSection('menu')">回菜單加購</button>
     </div>
+
     <div id="query" class="section">
         <h2 id="result-title">單據明細</h2>
         <div id="order-info" style="background:#f9f9f9; padding:15px; border-radius:10px; margin-bottom:10px;">請輸入單號查詢。</div>
@@ -51,6 +53,7 @@
 
 <script>
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbyEMJfYqQNTBg9RCNKAezRNyvrGnDTG6_R_mMV3UThiottLEVr1llyS7LKsJMsC_4A/exec'; 
+    
     const menuData = [
         { id: 1, name: "招牌去骨雞腿", price: 60 }, { id: 2, name: "秘製雞胸肉", price: 50 },
         { id: 3, name: "酥脆甜不辣", price: 20 }, { id: 4, name: "Q彈豬血糕", price: 20 },
@@ -64,6 +67,7 @@
     const isAdmin = new URLSearchParams(window.location.search).get('admin') === 'true';
     let lastPrintedId = localStorage.getItem('lastPrintedId') || "";
 
+    // 1. 初始化
     function init() {
         const container = document.getElementById('menu-container');
         menuData.forEach(item => {
@@ -72,6 +76,14 @@
         if (isAdmin) startMonitor();
     }
 
+    // 2. 切換區塊
+    function showSection(id) {
+        document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+        if(id === 'cart') renderCart();
+    }
+
+    // 3. 購物車邏輯
     function addToCart(id) {
         const item = menuData.find(i => i.id === id);
         const exit = cart.find(i => i.id === id);
@@ -89,31 +101,59 @@
         document.getElementById('cart-total').innerText = total;
     }
 
+    // 4. 結帳與送出
     function checkout() {
-        if (!cart.length) return;
+        if (cart.length === 0) {
+            alert("購物車是空的喔！");
+            return;
+        }
+        
         const btn = document.getElementById('checkout-btn');
         btn.disabled = true;
+        btn.innerText = "傳送中...";
+
         const orderId = "#A" + Math.floor(1000 + Math.random()*9000);
         const total = document.getElementById('cart-total').innerText;
+        
         const d = new Date();
-        const time = d.getFullYear() + "/" + (d.getMonth()+1) + "/" + d.getDate() + " " + String(d.getHours()).padStart(2,'0') + ":" + String(d.getMinutes()).padStart(2,'0');
+        const time = d.getFullYear() + "/" + (d.getMonth()+1) + "/" + d.getDate() + " " + 
+                     String(d.getHours()).padStart(2, '0') + ":" + String(d.getMinutes()).padStart(2, '0');
+        
         const itemsString = cart.map(i => `${i.name} x${i.qty}`).join('\n');
 
-        fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'create', orderId, time, itemsString, total }) })
-        .then(res => res.json())
-        .then(data => {
+        fetch(GAS_URL, {
+            method: 'POST',
+            mode: 'no-cors', // 增加穩定性
+            body: JSON.stringify({ action: 'create', orderId, time, itemsString, total })
+        })
+        .then(() => {
+            // 成功後的動作
+            document.getElementById('order-info').innerHTML = `
+                <h3 style="color:var(--primary);">✅ 下單成功</h3>
+                <strong>序號：${orderId}</strong><hr>
+                <p>訂單已送出，請至櫃檯結帳取餐。</p>
+            `;
+            showSection('query');
+            
             if (isAdmin) {
                 lastPrintedId = orderId;
                 localStorage.setItem('lastPrintedId', orderId);
                 preparePrint(orderId, time, itemsString, total);
             }
+
             cart = [];
             document.getElementById('cart-count').innerText = 0;
             btn.disabled = false;
+            btn.innerText = "確認送出訂單";
+        })
+        .catch(err => {
+            alert("送出失敗，請檢查網路！");
+            btn.disabled = false;
+            btn.innerText = "確認送出訂單";
         });
     }
 
-    // --- 改用 ESC/POS Bluetooth Print 服務指令 ---
+    // 5. 列印邏輯 (使用目前最普遍的 Intent 呼叫方式)
     function preparePrint(id, time, itemsStr, total) {
         let receipt = "       雅芳鹹水雞       \n";
         receipt += "========================\n";
@@ -125,11 +165,11 @@
         receipt += "總計：$" + total + "\n";
         receipt += " *** 謝謝惠顧 *** \n\n\n";
 
-        // 這是該 APP 的專屬呼叫語法
-        const url = "intent://#Intent;scheme=escpos;package=com.posprinter.printservice;S.data=" + encodeURIComponent(receipt) + ";end";
-        window.location.href = url;
+        // 嘗試呼叫 RawBT 或其他相容 APP 的通用連結
+        window.location.href = "rawbt:" + encodeURIComponent(receipt);
     }
 
+    // 6. 監控端
     function startMonitor() {
         setInterval(() => {
             fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'get_latest' }) })
@@ -144,23 +184,23 @@
         }, 10000); 
     }
 
-    init();
-    function showSection(id) {
-        document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-        document.getElementById(id).classList.add('active');
-        if(id === 'cart') renderCart();
-    }
+    // 7. 查詢
     function searchOrder() {
         const id = document.getElementById('order-number-input').value;
+        if(!id) return;
         fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'query', orderId: id }) })
         .then(res => res.json())
         .then(data => {
             const info = document.getElementById('order-info');
             if (data.status === 'success') {
                 info.innerHTML = `<strong>序號：${id}</strong><hr><pre>${data.itemsString}</pre><hr><strong>總額：$${data.total}</strong>`;
+            } else {
+                info.innerText = "找不到訂單。";
             }
         });
     }
+
+    init();
 </script>
 </body>
 </html>
